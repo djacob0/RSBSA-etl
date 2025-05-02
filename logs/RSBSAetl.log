@@ -1,0 +1,38 @@
+[2025-05-02T00:53:00.778Z] Starting ETL process. Total records: 15
+[2025-05-02T00:53:00.783Z] Processing batch: 0 to 499
+[2025-05-02T00:53:01.215Z] ERROR: Batch completed with 1 errors
+[2025-05-02T00:53:02.222Z] ETL process completed. Total Processed: 16, Total Skipped: 1
+[2025-05-02T01:02:00.073Z] Starting ETL process. Total records: 5
+[2025-05-02T01:02:00.077Z] Processing batch: 0 to 499
+[2025-05-02T01:02:00.444Z] ERROR: Batch completed with 1 errors
+[2025-05-02T01:02:01.456Z] ETL process completed. Total Processed: 4, Total Skipped: 1
+[2025-05-02T01:03:00.557Z] Starting ETL process. Total records: 5
+[2025-05-02T01:03:00.558Z] Processing batch: 0 to 499
+[2025-05-02T01:03:00.621Z] ERROR: Batch completed with 1 errors
+[2025-05-02T01:03:01.636Z] ETL process completed. Total Processed: 4, Total Skipped: 1
+[2025-05-02T01:05:00.211Z] Starting ETL process. Total records: 5
+[2025-05-02T01:05:00.214Z] Processing batch: 0 to 499
+[2025-05-02T01:05:00.358Z] ERROR: Batch completed with 1 errors
+[2025-05-02T01:05:01.369Z] ETL process completed. Total Processed: 4, Total Skipped: 1
+[2025-05-02T01:06:00.070Z] Starting ETL process. Total records: 5
+[2025-05-02T01:06:00.074Z] Processing batch: 0 to 499
+[2025-05-02T01:06:00.267Z] ERROR: Batch completed with 1 errors
+[2025-05-02T01:06:01.277Z] ETL process completed. Total Processed: 4, Total Skipped: 1
+[2025-05-02T01:07:00.606Z] Starting ETL process. Total records: 5
+[2025-05-02T01:07:00.608Z] Processing batch: 0 to 499
+[2025-05-02T01:07:00.686Z] ERROR: Batch completed with 1 errors
+[2025-05-02T01:07:01.705Z] ETL process completed. Total Processed: 4, Total Skipped: 1
+[2025-05-02T01:08:00.168Z] Starting ETL process. Total records: 5
+[2025-05-02T01:08:00.170Z] Processing batch: 0 to 499
+[2025-05-02T01:08:00.235Z] ERROR: Batch completed with 1 errors
+[2025-05-02T01:08:01.250Z] ETL process completed. Total Processed: 4, Total Skipped: 1
+[2025-05-02T01:09:00.228Z] Starting ETL process. Total records: 5
+[2025-05-02T01:09:00.231Z] Processing batch: 0 to 499
+[2025-05-02T01:09:00.381Z] ERROR: Batch completed with 1 errors
+[2025-05-02T01:09:01.391Z] ETL process completed. Total Processed: 4, Total Skipped: 1
+[2025-05-02T01:10:00.942Z] Starting ETL process. Total records: 5
+[2025-05-02T01:10:00.951Z] Processing batch: 0 to 499
+[2025-05-02T01:10:02.191Z] ETL process completed. Total Processed: 5, Total Skipped: 0
+[2025-05-02T01:11:00.470Z] Starting ETL process. Total records: 5
+[2025-05-02T01:11:00.471Z] Processing batch: 0 to 499
+[2025-05-02T01:11:01.537Z] ETL process completed. Total Processed: 5, Total Skipped: 0
