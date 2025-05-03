@@ -2,7 +2,7 @@ const fs = require('fs');
 const path = require('path');
 
 const logDirectory = path.join(__dirname, '../logs');
-const logFile = path.join(logDirectory, 'etl.log');
+const logFile = path.join(logDirectory, 'RSBSAetl.log');
 
 if (!fs.existsSync(logDirectory)) {
   fs.mkdirSync(logDirectory, { recursive: true });

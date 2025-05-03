@@ -6,11 +6,11 @@ class EtlLogger {
   async getRecordsBatch(offset = 0, limit = 500) {
     const [rows] = await this.pool.query(
       `SELECT log_id, rsbsa_no, \`table\`
-       FROM etl_logger_profiling
-       WHERE rsbsa_no IS NOT NULL
-         AND \`table\` IS NOT NULL
-       ORDER BY log_id ASC
-       LIMIT ? OFFSET ?`,
+        FROM etl_logger_profiling
+        WHERE rsbsa_no IS NOT NULL
+          AND \`table\` IS NOT NULL
+        ORDER BY log_id ASC
+        LIMIT ? OFFSET ?`,
       [limit, offset]
     );
     return rows;
@@ -19,9 +19,9 @@ class EtlLogger {
   async getTotalRecords() {
     const [result] = await this.pool.query(
       `SELECT COUNT(*) as total
-       FROM etl_logger_profiling
-       WHERE rsbsa_no IS NOT NULL
-         AND \`table\` IS NOT NULL`
+        FROM etl_logger_profiling
+        WHERE rsbsa_no IS NOT NULL
+          AND \`table\` IS NOT NULL`
     );
     return result[0].total;
   }

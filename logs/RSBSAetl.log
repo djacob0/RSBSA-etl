@@ -1,38 +1,36 @@
-[2025-05-02T00:53:00.778Z] Starting ETL process. Total records: 15
-[2025-05-02T00:53:00.783Z] Processing batch: 0 to 499
-[2025-05-02T00:53:01.215Z] ERROR: Batch completed with 1 errors
-[2025-05-02T00:53:02.222Z] ETL process completed. Total Processed: 16, Total Skipped: 1
-[2025-05-02T01:02:00.073Z] Starting ETL process. Total records: 5
-[2025-05-02T01:02:00.077Z] Processing batch: 0 to 499
-[2025-05-02T01:02:00.444Z] ERROR: Batch completed with 1 errors
-[2025-05-02T01:02:01.456Z] ETL process completed. Total Processed: 4, Total Skipped: 1
-[2025-05-02T01:03:00.557Z] Starting ETL process. Total records: 5
-[2025-05-02T01:03:00.558Z] Processing batch: 0 to 499
-[2025-05-02T01:03:00.621Z] ERROR: Batch completed with 1 errors
-[2025-05-02T01:03:01.636Z] ETL process completed. Total Processed: 4, Total Skipped: 1
-[2025-05-02T01:05:00.211Z] Starting ETL process. Total records: 5
-[2025-05-02T01:05:00.214Z] Processing batch: 0 to 499
-[2025-05-02T01:05:00.358Z] ERROR: Batch completed with 1 errors
-[2025-05-02T01:05:01.369Z] ETL process completed. Total Processed: 4, Total Skipped: 1
-[2025-05-02T01:06:00.070Z] Starting ETL process. Total records: 5
-[2025-05-02T01:06:00.074Z] Processing batch: 0 to 499
-[2025-05-02T01:06:00.267Z] ERROR: Batch completed with 1 errors
-[2025-05-02T01:06:01.277Z] ETL process completed. Total Processed: 4, Total Skipped: 1
-[2025-05-02T01:07:00.606Z] Starting ETL process. Total records: 5
-[2025-05-02T01:07:00.608Z] Processing batch: 0 to 499
-[2025-05-02T01:07:00.686Z] ERROR: Batch completed with 1 errors
-[2025-05-02T01:07:01.705Z] ETL process completed. Total Processed: 4, Total Skipped: 1
-[2025-05-02T01:08:00.168Z] Starting ETL process. Total records: 5
-[2025-05-02T01:08:00.170Z] Processing batch: 0 to 499
-[2025-05-02T01:08:00.235Z] ERROR: Batch completed with 1 errors
-[2025-05-02T01:08:01.250Z] ETL process completed. Total Processed: 4, Total Skipped: 1
-[2025-05-02T01:09:00.228Z] Starting ETL process. Total records: 5
-[2025-05-02T01:09:00.231Z] Processing batch: 0 to 499
-[2025-05-02T01:09:00.381Z] ERROR: Batch completed with 1 errors
-[2025-05-02T01:09:01.391Z] ETL process completed. Total Processed: 4, Total Skipped: 1
-[2025-05-02T01:10:00.942Z] Starting ETL process. Total records: 5
-[2025-05-02T01:10:00.951Z] Processing batch: 0 to 499
-[2025-05-02T01:10:02.191Z] ETL process completed. Total Processed: 5, Total Skipped: 0
-[2025-05-02T01:11:00.470Z] Starting ETL process. Total records: 5
-[2025-05-02T01:11:00.471Z] Processing batch: 0 to 499
-[2025-05-02T01:11:01.537Z] ETL process completed. Total Processed: 5, Total Skipped: 0
+[2025-05-03T10:31:00.800Z] Starting ETL process. Total records: 8
+[2025-05-03T10:31:00.811Z] Processing batch: 0 to 499
+[2025-05-03T10:31:02.081Z] ETL process completed. Total Processed: 17, Total Skipped: 0
+[2025-05-03T10:35:00.431Z] Starting ETL process. Total records: 8
+[2025-05-03T10:35:00.435Z] Processing batch: 0 to 499
+[2025-05-03T10:35:01.664Z] ETL process completed. Total Processed: 17, Total Skipped: 0
+[2025-05-03T10:50:03.060Z] Starting ETL process. Total records: 8
+[2025-05-03T10:50:03.063Z] Processing batch: 0 to 499
+[2025-05-03T10:50:06.511Z] ETL process completed. Total Processed: 17, Total Skipped: 0
+[2025-05-03T10:51:42.988Z] Starting ETL process. Total records: 8
+[2025-05-03T10:51:42.991Z] Processing batch: 0 to 499
+[2025-05-03T10:51:44.191Z] ETL process completed. Total Processed: 17, Total Skipped: 0
+[2025-05-03T10:51:56.023Z] Starting ETL process. Total records: 8
+[2025-05-03T10:51:56.026Z] Processing batch: 0 to 499
+[2025-05-03T10:51:57.222Z] ETL process completed. Total Processed: 17, Total Skipped: 0
+[2025-05-03T10:52:00.325Z] Starting ETL process. Total records: 8
+[2025-05-03T10:52:00.326Z] Processing batch: 0 to 499
+[2025-05-03T10:52:01.511Z] ETL process completed. Total Processed: 17, Total Skipped: 0
+[2025-05-03T11:04:00.879Z] Starting ETL process. Total records: 8
+[2025-05-03T11:04:00.882Z] Processing batch: 0 to 499
+[2025-05-03T11:04:02.155Z] ETL process completed. Total Processed: 17, Total Skipped: 0
+[2025-05-03T11:07:00.955Z] Starting ETL process. Total records: 8
+[2025-05-03T11:07:00.960Z] Processing batch: 0 to 499
+[2025-05-03T11:07:02.201Z] ETL process completed. Total Processed: 17, Total Skipped: 0
+[2025-05-03T11:08:00.569Z] Starting ETL process. Total records: 8
+[2025-05-03T11:08:00.571Z] Processing batch: 0 to 499
+[2025-05-03T11:08:02.123Z] ETL process completed. Total Processed: 17, Total Skipped: 0
+[2025-05-03T11:09:00.299Z] Starting ETL process. Total records: 8
+[2025-05-03T11:09:00.299Z] Processing batch: 0 to 499
+[2025-05-03T11:09:01.440Z] ETL process completed. Total Processed: 17, Total Skipped: 0
+[2025-05-03T11:10:00.887Z] Starting ETL process. Total records: 8
+[2025-05-03T11:10:00.891Z] Processing batch: 0 to 499
+[2025-05-03T11:10:02.155Z] ETL process completed. Total Processed: 17, Total Skipped: 0
+[2025-05-03T11:16:00.162Z] Starting ETL process. Total records: 8
+[2025-05-03T11:16:00.166Z] Processing batch: 0 to 499
+[2025-05-03T11:16:01.403Z] ETL process completed. Total Processed: 17, Total Skipped: 0

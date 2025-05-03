@@ -4,100 +4,223 @@ const { sourcePool, targetPool } = require('../config/db');
 
 class EtlService {
     constructor(sourcePool, targetPool) {
-      this.sourcePool = sourcePool;
-      this.targetPool = targetPool;
-      this.etlLogger = new EtlLogger(sourcePool);
+        this.sourcePool = sourcePool;
+        this.targetPool = targetPool;
+        this.etlLogger = new EtlLogger(sourcePool);
+        this.ONE_TO_ONE_TABLES = [
+            'farmers_kyc1', 'farmers_kyc2', 'farmers_kyc3', 'farmers_kyc4'
+        ];
     }
 
     async getSourceData(table, rsbsaNo) {
-      const [rows] = await this.sourcePool.query(
-        `SELECT * FROM ${table} WHERE rsbsa_no = ?`,
-        [rsbsaNo]
-      );
-      return rows[0];
-    }
+      if (table === 'farmparcel') {
+          const [ownerships] = await this.sourcePool.query(
+              `SELECT parcel_id FROM farmparcelownership WHERE rsbsa_no = ?`,
+              [rsbsaNo]
+          );
+
+          if (ownerships.length === 0) return [];
+
+          const parcelIds = ownerships.map(o => o.parcel_id);
+          const [rows] = await this.sourcePool.query(
+              `SELECT * FROM farmparcel WHERE parcel_id IN (?)`,
+              [parcelIds]
+          );
+          return rows;
+      } else {
+          const [rows] = await this.sourcePool.query(
+              `SELECT * FROM ${table} WHERE rsbsa_no = ?`,
+              [rsbsaNo]
+          );
+          return rows;
+      }
+  }
 
     async transferData(table, data) {
+      // console.log(`Starting transfer for table ${table} with ${data.length} records`);
       await this.ensureTableExists(table);
 
-      switch (table) {
-        case 'farmers_kyc1':
-          await this.handleFarmersKyc1(data);
-          break;
-        case 'farmers_kyc2':
-          await this.handleFarmersKyc2(data);
-          break;
-        case 'farmers_kyc3':
-          await this.handleFarmersKyc3(data);
-          break;
-        case 'farmers_kyc4':
-          await this.handleFarmersKyc4(data);
-          break;
-        case 'farmers_attachments':
-          await this.handleFarmersAttachments(data);
-          break;
-        case 'farmers_fca':
-          await this.handleFarmersFca(data);
-          break;
-        case 'farmers_form_attachments':
-          await this.handleFarmersFormAttachments(data);
-          break;
-        case 'farmers_livelihood':
-          await this.handleFarmersLivelihood(data);
-          break;
-        case 'farmparcelactivity':
-          await this.handleFarmParcelActivity(data);
-          break;
-        case 'farmparcelattachments':
-          await this.handleFarmParcelAttachments(data);
-          break;
-        case 'farmparcelownership':
-          await this.handleFarmParcelOwnership(data);
-          break;
-        default:
-          await this.genericTransfer(table, data);
+      if (this.ONE_TO_ONE_TABLES.includes(table)) {
+          if (data.length > 0) {
+              const processedData = this.processDataForTable(table, data[0]);
+              await this.handleOneToOneTransfer(table, processedData);
+          }
+      } else {
+          const processedRecords = data.map(record => this.processDataForTable(table, record));
+          await this.handleOneToManyTransfer(table, processedRecords);
       }
+      // console.log(`Completed transfer for table ${table}`);
+  }
+
+    async handleOneToOneTransfer(table, data) {
+      const [existing] = await this.targetPool.query(
+          `SELECT 1 FROM ${table} WHERE rsbsa_no = ? LIMIT 1`,
+          [data.rsbsa_no]
+      );
+
+      if (existing.length > 0) {
+          await this.updateExistingRecord(table, data);
+      } else {
+          await this.insertNewRecord(table, data);
+      }
+  }
+
+  async handleOneToManyTransfer(table, records) {
+    if (records.length === 0) return;
+
+    const connection = await this.targetPool.getConnection();
+    try {
+        await connection.beginTransaction();
+
+        if (table === 'farmparcel') {
+            const parcelIds = records.map(r => r.parcel_id);
+            await connection.query(
+                `DELETE FROM ${table} WHERE parcel_id IN (?)`,
+                [parcelIds]
+            );
+        }
+        else {
+            await connection.query(
+                `DELETE FROM ${table} WHERE rsbsa_no = ?`,
+                [records[0].rsbsa_no]
+            );
+        }
+        for (const data of records) {
+            await this.insertNewRecord(table, data, connection);
+        }
+
+        await connection.commit();
+    } catch (error) {
+        await connection.rollback();
+        throw error;
+    } finally {
+        connection.release();
+    }
+}
+    async updateExistingRecord(table, data) {
+        const columns = Object.keys(data).filter(col => col !== 'rsbsa_no');
+        const setClause = columns.map(col => `${col} = ?`).join(', ');
+        const values = columns.map(col => data[col]);
+        values.push(data.rsbsa_no);
+
+        await this.targetPool.query(
+            `UPDATE ${table} SET ${setClause} WHERE rsbsa_no = ?`,
+            values
+        );
+    }
+
+    async insertNewRecord(table, data, connection = this.targetPool) {
+      const columns = Object.keys(data);
+      const escapedColumns = columns.map(col => {
+          const reservedKeywords = ['long', 'group', 'order', 'desc', 'primary'];
+          return reservedKeywords.includes(col.toLowerCase()) ? `\`${col}\`` : col;
+      });
+
+      const placeholders = columns.map(() => '?').join(', ');
+      const values = columns.map(col => data[col]);
+
+      await connection.query(
+          `INSERT INTO ${table} (${escapedColumns.join(', ')}) VALUES (${placeholders})`,
+          values
+      );
+  }
+
+    processDataForTable(table, data) {
+        switch (table) {
+            case 'farmers_kyc1':
+                return this.uppercaseFields(data, [
+                    'data_source', 'first_name', 'middle_name', 'surname', 'ext_name',
+                    'mother_maiden_name', 'maiden_fname', 'maiden_mname', 'maiden_lname',
+                    'maiden_extname', 'birth_prv', 'birth_prv_mun', 'street'
+                ]);
+            case 'farmers_kyc2':
+                return this.uppercaseFields(data, [
+                    'mob_number_fname', 'mob_number_mname', 'mob_number_lname',
+                    'mob_number_extname', 'spouse', 'hh_head_name', 'hh_relationship',
+                    'emergency_name'
+                ]);
+            case 'farmers_kyc3':
+                return this.uppercaseFields(data, [
+                    'vtc_bgy_chair', 'vtc_agri_office', 'vtc_mafc_chair'
+                ]);
+            case 'farmers_kyc4':
+                return this.uppercaseFields(data, [
+                    'encoder_fullname', 'encoder_fullname_updated', 'deceased_reason'
+                ]);
+            case 'farmers_attachments':
+            case 'farmers_fca':
+            case 'farmers_form_attachments':
+                return this.uppercaseFields(data, ['encoder_fullname']);
+            case 'farmers_livelihood':
+                return this.uppercaseFields(data, [
+                    'livelihood', 'activity_work', 'specify'
+                ]);
+            case 'farmparcelactivity':
+            case 'farmparcelattachments':
+            case 'farmparcel':
+              return this.uppercaseFields(data, [
+                  'owner_firstname', 'owner_lastname', 'owner_extname',
+                  'farmers_rotation_fullname', 'desc_location', 'unit_measure',
+                  'own_doc_no', 'attachment'
+              ]);
+            case 'farmparcelownership':
+                return this.uppercaseFields(data, ['encoder_agency', 'encoder_fullname']);
+            default:
+                return data;
+        }
+    }
+
+    uppercaseFields(data, fields) {
+        const processed = {...data};
+        fields.forEach(field => {
+            if (processed[field] && typeof processed[field] === 'string') {
+                processed[field] = processed[field].toUpperCase();
+            }
+        });
+        return processed;
     }
 
     async ensureTableExists(table) {
-      switch (table) {
-        case 'farmers_kyc1':
-          await this.createFarmersKyc1();
-          break;
-        case 'farmers_kyc2':
-          await this.createFarmersKyc2();
-          break;
-        case 'farmers_kyc3':
-          await this.createFarmersKyc3();
-          break;
-        case 'farmers_kyc4':
-          await this.createFarmersKyc4();
-          break;
-        case 'farmers_attachments':
-          await this.createFarmersAttachments();
-          break;
-        case 'farmers_fca':
-          await this.createFarmersFca();
-          break;
-        case 'farmers_form_attachments':
-          await this.createFarmersFormAttachments();
-          break;
-        case 'farmers_livelihood':
-          await this.createFarmersLivelihood();
-          break;
-        case 'farmparcelactivity':
-          await this.createFarmParcelActivity();
-          break;
-        case 'farmparcelattachments':
-          await this.createFarmParcelAttachments();
-          break;
-        case 'farmparcelownership':
-          await this.createFarmParcelOwnership();
-          break;
-      }
+        switch (table) {
+            case 'farmers_kyc1':
+                await this.createFarmersKyc1();
+                break;
+            case 'farmers_kyc2':
+                await this.createFarmersKyc2();
+                break;
+            case 'farmers_kyc3':
+                await this.createFarmersKyc3();
+                break;
+            case 'farmers_kyc4':
+                await this.createFarmersKyc4();
+                break;
+            case 'farmers_attachments':
+                await this.createFarmersAttachments();
+                break;
+            case 'farmers_fca':
+                await this.createFarmersFca();
+                break;
+            case 'farmers_form_attachments':
+                await this.createFarmersFormAttachments();
+                break;
+            case 'farmers_livelihood':
+                await this.createFarmersLivelihood();
+                break;
+            case 'farmparcelactivity':
+                await this.createFarmParcelActivity();
+                break;
+            case 'farmparcelattachments':
+                await this.createFarmParcelAttachments();
+                break;
+            case 'farmparcel':
+              await this.createFarmParcel();
+              break;
+            case 'farmparcelownership':
+                await this.createFarmParcelOwnership();
+                break;
+        }
     }
 
-    // Table creation methods
     async createFarmersKyc1() {
       const sql = `
         CREATE TABLE IF NOT EXISTS farmers_kyc1 (
@@ -371,6 +494,49 @@ class EtlService {
         )`;
       await this.targetPool.query(sql);
     }
+    async createFarmParcel() {
+      const sql = `
+          CREATE TABLE IF NOT EXISTS farmparcel (
+              parcel_id VARCHAR(50) PRIMARY KEY,
+              parcel_no TINYINT(2),
+              arb TINYINT(2),
+              ancestral TINYINT(2),
+              bgy1 TINYINT(3) UNSIGNED ZEROFILL,
+              mun1 TINYINT(2) UNSIGNED ZEROFILL,
+              prv1 TINYINT(2) UNSIGNED ZEROFILL,
+              reg1 TINYINT(2) UNSIGNED ZEROFILL,
+              geo_code VARCHAR(9),
+              bgy INT(3) UNSIGNED ZEROFILL,
+              mun INT(2) UNSIGNED ZEROFILL,
+              prv INT(3) UNSIGNED ZEROFILL,
+              reg INT(2) UNSIGNED ZEROFILL,
+              desc_location VARCHAR(200),
+              parcel_geo_pol POLYGON,
+              parcel_geo_point POINT,
+              lat FLOAT(10,0),
+              \`long\` FLOAT(10,0),
+              farm_area DECIMAL(10,4) UNSIGNED,
+              temp_farm_area DECIMAL(10,4),
+              unit_measure VARCHAR(20),
+              own_doc TINYINT(2),
+              own_doc_no VARCHAR(50),
+              type TINYINT(1),
+              owner_firstname VARCHAR(200),
+              owner_lastname VARCHAR(200),
+              owner_extname VARCHAR(200),
+              owner_ans TINYINT(1),
+              owner_rsbsa_no VARCHAR(50),
+              farmers_rotation_fullname VARCHAR(200),
+              farmers_rotation_rsbsa_no VARCHAR(200),
+              remarks LONGTEXT,
+              attachment VARCHAR(200),
+              active ENUM('1','0'),
+              date_created TIMESTAMP,
+              slip_b_update TINYINT(4),
+              from_slip_b_update TINYINT(4)
+          )`;
+      await this.targetPool.query(sql);
+  }
 
     async createFarmParcelOwnership() {
       const sql = `
@@ -388,358 +554,128 @@ class EtlService {
       await this.targetPool.query(sql);
     }
 
-    // Data transfer handlers
-    async handleFarmersKyc1(data) {
-      const columns = [
-        'farmerID', 'philsys_trn', 'philsys_pcn', 'sequence', 'rsbsa_no',
-        'source_rsbsa_no', 'data_source', 'other_sys_gen_id', 'other_sys_id',
-        'enrollment', 'file_picture', 'control_no', 'first_name', 'middle_name',
-        'surname', 'ext_name', 'mother_maiden_name', 'spouse_rsbsa_no',
-        'maiden_fname', 'maiden_mname', 'maiden_lname', 'maiden_extname',
-        'sex', 'birthday', 'birth_place', 'birth_prv', 'birth_prv_mun',
-        'house_no', 'street', 'brgy1', 'mun1', 'prv1', 'reg1', 'geo_code',
-        'geocode', 'brgy', 'mun', 'prv', 'reg', 'ncr_brgy', 'ncr_mun',
-        'ncr_prv', 'ncr_reg', 'ncr_house_no', 'ncr_street', 'c_date',
-        'clone_by_id', 'clone_by_fullname', 'date_cloned', 'v1_v2'
-      ];
-
-      const processedData = this.uppercaseFields(data, [
-        'data_source', 'first_name', 'middle_name', 'surname', 'ext_name',
-        'mother_maiden_name', 'maiden_fname', 'maiden_mname', 'maiden_lname',
-        'maiden_extname', 'birth_place', 'birth_prv', 'birth_prv_mun', 'street'
-      ]);
-
-      await this.handleTableTransfer('farmers_kyc1', columns, processedData);
-    }
-
-    async handleFarmersKyc2(data) {
-      const columns = [
-        'rsbsa_no', 'contact_num', 'contact_num_question', 'mob_number_fname',
-        'mob_number_mname', 'mob_number_lname', 'mob_number_extname',
-        'landline_num', 'education', 'pwd', 'religion', 'civil_status',
-        'spouse', 'spouse_fname', 'spouse_mname', 'spouse_lname',
-        'spouse_extname', 'spouse_rsbsa_no', 'beneficiary_4ps', 'ind_ans',
-        'ind_id', 'gov_ans', 'gov_id', 'gov_id_num', 'hh_head', 'hh_head_name',
-        'hh_relationship', 'hh_no_members', 'hh_no_male', 'hh_no_female',
-        'fca_ans', 'fca_id', 'emergency_name', 'emergency_contact'
-      ];
-
-      const processedData = this.uppercaseFields(data, [
-        'mob_number_fname', 'mob_number_mname', 'mob_number_lname',
-        'mob_number_extname', 'spouse', 'hh_head_name', 'hh_relationship',
-        'emergency_name'
-      ]);
-
-      await this.handleTableTransfer('farmers_kyc2', columns, processedData);
-    }
-
-    async handleFarmersKyc3(data) {
-      const columns = [
-        'rsbsa_no', 'no_farm_parcels', 'arb', 'gross_income_farming',
-        'gross_income_nonfarming', 'vtc_date', 'vtc_bgy_chair',
-        'vtc_agri_office', 'vtc_mafc_chair'
-      ];
-
-      const processedData = this.uppercaseFields(data, [
-        'vtc_bgy_chair', 'vtc_agri_office', 'vtc_mafc_chair'
-      ]);
-
-      await this.handleTableTransfer('farmers_kyc3', columns, processedData);
-    }
-
-    async handleFarmersKyc4(data) {
-      const columns = [
-        'rsbsa_no', 'encoder_agency', 'encoder_id', 'encoder_fullname',
-        'encoder_id_updated', 'encoder_fullname_updated', 'date_created',
-        'date_updated', 'deceased', 'deceased_reason', 'ch_occupation',
-        'ch_occupation_reason', 'duplicated', 'duplicated_reason',
-        'duplicated_rsbsa_no', 'rffa2_cashout', 'validated',
-        'unvalidated_reason', 'validator_by_id', 'validator_fullname',
-        'date_validated', 'submitted', 'date_submitted', 'submitted_by_id',
-        'submitted_by_fullname', 'rfo_validated', 'rfo_date_validated',
-        'rfo_validated_id', 'rfo_validated_fullname', 'online_applicant',
-        'checked_date', 'checked', 'checked_by_id', 'checked_fullname',
-        'complete_cloned_by_fullname', 'complete_cloned_by_id',
-        'date_cloned_completed', 'rsbsa_liveness_verified',
-        'rsbsa_last_liveness_date', 'rsbsa_last_user_id_liveness',
-        'rsbsa_last_user_fullname_liveness', 'philsys_liveness_verified',
-        'philsys_last_liveness_date', 'philsys_last_user_id_liveness',
-        'philsys_last_user_fullname_liveness'
-      ];
-
-      const processedData = this.uppercaseFields(data, [
-        'encoder_fullname', 'encoder_fullname_updated', 'deceased_reason'
-      ]);
-
-      await this.handleTableTransfer('farmers_kyc4', columns, processedData);
-    }
-
-    async handleFarmersAttachments(data) {
-      const columns = [
-        'rsbsa_no', 'filename', 'validity_file', 'date_created',
-        'active', 'encoder_agency', 'encoder_id', 'encoder_fullname'
-      ];
-
-      const processedData = this.uppercaseFields(data, ['encoder_fullname']);
-      await this.handleTableTransfer('farmers_attachments', columns, processedData);
-    }
-
-    async handleFarmersFca(data) {
-      const columns = [
-        'rsbsa_no', 'fca_id', 'fca_name', 'date_created',
-        'active', 'encoder_agency', 'encoder_id', 'encoder_fullname'
-      ];
-
-      const processedData = this.uppercaseFields(data, ['fca_name', 'encoder_fullname']);
-      await this.handleTableTransfer('farmers_fca', columns, processedData);
-    }
-
-    async handleFarmersFormAttachments(data) {
-      const columns = [
-        'rsbsa_no', 'filename', 'date_created', 'active',
-        'encoder_agency', 'encoder_id', 'encoder_fullname'
-      ];
-
-      const processedData = this.uppercaseFields(data, ['encoder_fullname']);
-      await this.handleTableTransfer('farmers_form_attachments', columns, processedData);
-    }
-
-    async handleFarmersLivelihood(data) {
-      const columns = [
-        'rsbsa_no', 'livelihood', 'activity_work', 'specify', 'active'
-      ];
-
-      const processedData = this.uppercaseFields(data, [
-        'livelihood', 'activity_work', 'specify'
-      ]);
-
-      await this.handleTableTransfer('farmers_livelihood', columns, processedData);
-    }
-
-    async handleFarmParcelActivity(data) {
-      const columns = [
-        'parcel_id', 'rsbsa_no', 'crop_id', 'size', 'temp_size', 'orig',
-        'no_heads', 'farm_type', 'organic', 'active', 'encoder_agency',
-        'encoder_id', 'encoder_fullname', 'date_created', 'slip_b_update',
-        'from_slip_b_update', 'intercrop', 'crop_date_start', 'crop_date_end',
-        'gpx_id'
-      ];
-
-      const processedData = this.uppercaseFields(data, ['encoder_agency', 'encoder_fullname']);
-      await this.handleTableTransfer('farmparcelactivity', columns, processedData);
-    }
-
-    async handleFarmParcelAttachments(data) {
-      const columns = [
-        'parcel_id', 'rsbsa_no', 'file_name', 'active', 'encoder_agency',
-        'encoder_id', 'encoder_fullname', 'date_created'
-      ];
-
-      const processedData = this.uppercaseFields(data, ['encoder_agency', 'encoder_fullname']);
-      await this.handleTableTransfer('farmparcelattachments', columns, processedData);
-    }
-
-    async handleFarmParcelOwnership(data) {
-      const columns = [
-        'parcel_id', 'rsbsa_no', 'own_status', 'date_created', 'active',
-        'encoder_agency', 'encoder_id', 'encoder_fullname'
-      ];
-
-      const processedData = this.uppercaseFields(data, [
-        'own_status', 'encoder_agency', 'encoder_fullname'
-      ]);
-
-      await this.handleTableTransfer('farmparcelownership', columns, processedData);
-    }
-
-    uppercaseFields(data, fields) {
-      const processed = {...data};
-      fields.forEach(field => {
-        if (processed[field] && typeof processed[field] === 'string') {
-          processed[field] = processed[field].toUpperCase();
-        }
-      });
-      return processed;
-    }
-
-    async handleTableTransfer(table, columns, data) {
-      const [existing] = await this.targetPool.query(
-        `SELECT 1 FROM ${table} WHERE rsbsa_no = ? LIMIT 1`,
-        [data.rsbsa_no]
-      );
-
-      const validColumns = columns.filter(col => data[col] !== undefined);
-
-      if (existing.length > 0) {
-        const setClause = validColumns
-          .filter(col => col !== 'rsbsa_no')
-          .map(col => `${col} = ?`)
-          .join(', ');
-
-        const values = validColumns
-          .filter(col => col !== 'rsbsa_no')
-          .map(col => data[col]);
-
-        values.push(data.rsbsa_no);
-
-        await this.targetPool.query(
-          `UPDATE ${table} SET ${setClause} WHERE rsbsa_no = ?`,
-          values
-        );
-      } else {
-        const placeholders = validColumns.map(() => '?').join(', ');
-        const values = validColumns.map(col => data[col]);
-
-        await this.targetPool.query(
-          `INSERT INTO ${table} (${validColumns.join(', ')}) VALUES (${placeholders})`,
-          values
-        );
-      }
-    }
-
-    // async genericTransfer(table, data) {
-    //   const [existing] = await this.targetPool.query(
-    //     `SELECT 1 FROM ${table} WHERE rsbsa_no = ? LIMIT 1`,
-    //     [data.rsbsa_no]
-    //   );
-
-    //   if (existing.length > 0) {
-    //     const setClause = Object.keys(data)
-    //       .filter(key => key !== 'rsbsa_no')
-    //       .map(key => `${key} = ?`)
-    //       .join(', ');
-
-    //     const values = Object.keys(data)
-    //       .filter(key => key !== 'rsbsa_no')
-    //       .map(key => data[key]);
-
-    //     values.push(data.rsbsa_no);
-
-    //     await this.targetPool.query(
-    //       `UPDATE ${table} SET ${setClause} WHERE rsbsa_no = ?`,
-    //       values
-    //     );
-    //   } else {
-    //     const columns = Object.keys(data).join(', ');
-    //     const placeholders = Object.keys(data).map(() => '?').join(', ');
-    //     const values = Object.values(data);
-
-    //     await this.targetPool.query(
-    //       `INSERT INTO ${table} (${columns}) VALUES (${placeholders})`,
-    //       values
-    //     );
-    //   }
-    // }
-
     async getValidLogRecords() {
       const [rows] = await this.sourcePool.query(
-      `SELECT log_id, rsbsa_no, \`table\`
-        FROM etl_logger_profiling
-        WHERE rsbsa_no IS NOT NULL
-          AND \`table\` IS NOT NULL
-        ORDER BY log_id ASC`
+          `SELECT log_id, rsbsa_no, \`table\`
+            FROM etl_logger_profiling
+            WHERE rsbsa_no IS NOT NULL
+              AND (\`table\` IS NOT NULL OR \`table\` = 'farmparcel')
+            ORDER BY log_id ASC`
       );
       return rows;
-    }
+  }
 
-    async processBatch(batch) {
-      let processedCount = 0;
-      let skippedCount = 0;
-      const batchErrors = [];
-      const batchWarnings = [];
+  async processBatch(batch) {
+    let processedCount = 0;
+    let skippedCount = 0;
+    const batchErrors = [];
+    const batchWarnings = [];
 
-      for (const record of batch) {
+    for (const record of batch) {
         try {
-          if (!record.table || !record.rsbsa_no) {
-            batchWarnings.push({
-              log_id: record.log_id,
-              message: 'Skipped due to missing table or RSBSA number'
-            });
-            skippedCount++;
-            continue;
-          }
+            if (!record.table || !record.rsbsa_no) {
+                batchWarnings.push({
+                    log_id: record.log_id,
+                    message: 'Skipped due to missing table or RSBSA number'
+                });
+                skippedCount++;
+                continue;
+            }
 
-          const sourceData = await this.getSourceData(
-            record.table,
-            record.rsbsa_no
-          );
+            const sourceData = await this.getSourceData(record.table, record.rsbsa_no);
 
-          if (!sourceData) {
-            batchWarnings.push({
-              log_id: record.log_id,
-              message: `No source data for RSBSA ${record.rsbsa_no} in ${record.table}`
-            });
-            skippedCount++;
-            continue;
-          }
+            if (!sourceData || sourceData.length === 0) {
+                batchWarnings.push({
+                    log_id: record.log_id,
+                    message: `No source data for RSBSA ${record.rsbsa_no} in ${record.table}`
+                });
+                skippedCount++;
+                continue;
+            }
 
-          await this.transferData(record.table, sourceData);
-          processedCount++;
+            await this.transferData(record.table, sourceData);
+            processedCount += sourceData.length;
+
+            if (record.table === 'farmparcelownership') {
+                const parcelIds = sourceData.map(item => item.parcel_id);
+                if (parcelIds.length > 0) {
+                    const [parcelData] = await this.sourcePool.query(
+                        `SELECT * FROM farmparcel WHERE parcel_id IN (?)`,
+                        [parcelIds]
+                    );
+
+                    if (parcelData.length > 0) {
+                        await this.transferData('farmparcel', parcelData);
+                        processedCount += parcelData.length;
+                    }
+                }
+            }
 
         } catch (error) {
-          batchErrors.push({
-            log_id: record.log_id,
-            error: error.message,
-            stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
-          });
-          skippedCount++;
+            batchErrors.push({
+                log_id: record.log_id,
+                error: error.message,
+                stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+            });
+            skippedCount++;
         }
-      }
+    }
 
       if (batchErrors.length > 0) {
-        logger.error(`Batch completed with ${batchErrors.length} errors`, {
-          sampleErrors: batchErrors.slice(0, 5),
-          errorRate: `${((batchErrors.length / batch.length) * 100).toFixed(2)}%`
-        });
+          logger.error(`Batch completed with ${batchErrors.length} errors`, {
+              sampleErrors: batchErrors.slice(0, 5),
+              errorRate: `${((batchErrors.length / batch.length) * 100).toFixed(2)}%`
+          });
+          console.log(`Batch completed with ${batchErrors.length} errors: ${JSON.stringify(batchErrors.slice(0, 5))}`);
       }
 
       if (batchWarnings.length > 0) {
-        logger.log(`Batch had ${batchWarnings.length} warnings`, {
-          sampleWarnings: batchWarnings.slice(0, 5)
-        });
+          logger.log(`Batch had ${batchWarnings.length} warnings`, {
+              sampleWarnings: batchWarnings.slice(0, 5)
+          });
+          console.log(`Batch had ${batchWarnings.length} warnings: ${JSON.stringify(batchWarnings.slice(0, 5))}`);
       }
-
-      logger.debug(`Batch stats: ${processedCount} processed, ${skippedCount} skipped`);
 
       return {
-        processedCount,
-        skippedCount,
-        errors: batchErrors,
-        warnings: batchWarnings
+          processedCount,
+          skippedCount,
+          errors: batchErrors,
+          warnings: batchWarnings
       };
-    }
+  }
 
     async runEtlProcess() {
-      try {
-        const batchSize = 500;
-        let offset = 0;
-        let totalProcessed = 0;
-        let totalSkipped = 0;
+        try {
+            const batchSize = 500;
+            let offset = 0;
+            let totalProcessed = 0;
+            let totalSkipped = 0;
 
-        const totalRecords = await this.etlLogger.getTotalRecords();
+            const totalRecords = await this.etlLogger.getTotalRecords();
+            logger.log(`Starting ETL process. Total records: ${totalRecords}`);
 
-        while (offset < totalRecords) {
-          logger.log(`Processing batch: ${offset} to ${offset + batchSize - 1}`);
+            while (offset < totalRecords) {
+                logger.log(`Processing batch: ${offset} to ${offset + batchSize - 1}`);
 
-          const batch = await this.etlLogger.getRecordsBatch(offset, batchSize);
-          if (batch.length === 0) break;
+                const batch = await this.etlLogger.getRecordsBatch(offset, batchSize);
+                if (batch.length === 0) break;
 
-          const { processedCount, skippedCount } = await this.processBatch(batch);
+                const { processedCount, skippedCount } = await this.processBatch(batch);
 
-          totalProcessed += processedCount;
-          totalSkipped += skippedCount;
-          offset += batchSize;
+                totalProcessed += processedCount;
+                totalSkipped += skippedCount;
+                offset += batchSize;
 
-          await new Promise(resolve => setTimeout(resolve, 1000));
+                await new Promise(resolve => setTimeout(resolve, 1000));
+            }
+
+            logger.log(`ETL process completed. Total Processed: ${totalProcessed}, Total Skipped: ${totalSkipped}`);
+            return { processed: totalProcessed, skipped: totalSkipped };
+        } catch (error) {
+            logger.error(`ETL process failed: ${error.message}`);
+            throw error;
         }
-
-        logger.log(`ETL process completed. Total Processed: ${totalProcessed}, Total Skipped: ${totalSkipped}`);
-        return { processed: totalProcessed, skipped: totalSkipped };
-      } catch (error) {
-        logger.error(`ETL process failed: ${error.message}`);
-        throw error;
-      }
     }
-  }
+}
 
 module.exports = EtlService;
