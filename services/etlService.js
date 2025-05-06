@@ -10,6 +10,7 @@ class EtlService {
         this.ONE_TO_ONE_TABLES = [
             'farmers_kyc1', 'farmers_kyc2', 'farmers_kyc3', 'farmers_kyc4'
         ];
+        this.lastRun = null;
     }
 
     async getSourceData(table, rsbsaNo) {
@@ -34,10 +35,9 @@ class EtlService {
           );
           return rows;
       }
-  }
+    }
 
     async transferData(table, data) {
-      // console.log(`Starting transfer for table ${table} with ${data.length} records`);
       await this.ensureTableExists(table);
 
       if (this.ONE_TO_ONE_TABLES.includes(table)) {
@@ -49,8 +49,7 @@ class EtlService {
           const processedRecords = data.map(record => this.processDataForTable(table, record));
           await this.handleOneToManyTransfer(table, processedRecords);
       }
-      // console.log(`Completed transfer for table ${table}`);
-  }
+    }
 
     async handleOneToOneTransfer(table, data) {
       const [existing] = await this.targetPool.query(
@@ -63,40 +62,41 @@ class EtlService {
       } else {
           await this.insertNewRecord(table, data);
       }
-  }
-
-  async handleOneToManyTransfer(table, records) {
-    if (records.length === 0) return;
-
-    const connection = await this.targetPool.getConnection();
-    try {
-        await connection.beginTransaction();
-
-        if (table === 'farmparcel') {
-            const parcelIds = records.map(r => r.parcel_id);
-            await connection.query(
-                `DELETE FROM ${table} WHERE parcel_id IN (?)`,
-                [parcelIds]
-            );
-        }
-        else {
-            await connection.query(
-                `DELETE FROM ${table} WHERE rsbsa_no = ?`,
-                [records[0].rsbsa_no]
-            );
-        }
-        for (const data of records) {
-            await this.insertNewRecord(table, data, connection);
-        }
-
-        await connection.commit();
-    } catch (error) {
-        await connection.rollback();
-        throw error;
-    } finally {
-        connection.release();
     }
-}
+
+    async handleOneToManyTransfer(table, records) {
+      if (records.length === 0) return;
+
+      const connection = await this.targetPool.getConnection();
+      try {
+          await connection.beginTransaction();
+
+          if (table === 'farmparcel') {
+              const parcelIds = records.map(r => r.parcel_id);
+              await connection.query(
+                  `DELETE FROM ${table} WHERE parcel_id IN (?)`,
+                  [parcelIds]
+              );
+          }
+          else {
+              await connection.query(
+                  `DELETE FROM ${table} WHERE rsbsa_no = ?`,
+                  [records[0].rsbsa_no]
+              );
+          }
+          for (const data of records) {
+              await this.insertNewRecord(table, data, connection);
+          }
+
+          await connection.commit();
+      } catch (error) {
+          await connection.rollback();
+          throw error;
+      } finally {
+          connection.release();
+      }
+    }
+
     async updateExistingRecord(table, data) {
         const columns = Object.keys(data).filter(col => col !== 'rsbsa_no');
         const setClause = columns.map(col => `${col} = ?`).join(', ');
@@ -123,7 +123,7 @@ class EtlService {
           `INSERT INTO ${table} (${escapedColumns.join(', ')}) VALUES (${placeholders})`,
           values
       );
-  }
+    }
 
     processDataForTable(table, data) {
         switch (table) {
@@ -494,6 +494,7 @@ class EtlService {
         )`;
       await this.targetPool.query(sql);
     }
+
     async createFarmParcel() {
       const sql = `
           CREATE TABLE IF NOT EXISTS farmparcel (
@@ -536,7 +537,7 @@ class EtlService {
               from_slip_b_update TINYINT(4)
           )`;
       await this.targetPool.query(sql);
-  }
+    }
 
     async createFarmParcelOwnership() {
       const sql = `
@@ -563,63 +564,63 @@ class EtlService {
             ORDER BY log_id ASC`
       );
       return rows;
-  }
-
-  async processBatch(batch) {
-    let processedCount = 0;
-    let skippedCount = 0;
-    const batchErrors = [];
-    const batchWarnings = [];
-
-    for (const record of batch) {
-        try {
-            if (!record.table || !record.rsbsa_no) {
-                batchWarnings.push({
-                    log_id: record.log_id,
-                    message: 'Skipped due to missing table or RSBSA number'
-                });
-                skippedCount++;
-                continue;
-            }
-
-            const sourceData = await this.getSourceData(record.table, record.rsbsa_no);
-
-            if (!sourceData || sourceData.length === 0) {
-                batchWarnings.push({
-                    log_id: record.log_id,
-                    message: `No source data for RSBSA ${record.rsbsa_no} in ${record.table}`
-                });
-                skippedCount++;
-                continue;
-            }
-
-            await this.transferData(record.table, sourceData);
-            processedCount += sourceData.length;
-
-            if (record.table === 'farmparcelownership') {
-                const parcelIds = sourceData.map(item => item.parcel_id);
-                if (parcelIds.length > 0) {
-                    const [parcelData] = await this.sourcePool.query(
-                        `SELECT * FROM farmparcel WHERE parcel_id IN (?)`,
-                        [parcelIds]
-                    );
-
-                    if (parcelData.length > 0) {
-                        await this.transferData('farmparcel', parcelData);
-                        processedCount += parcelData.length;
-                    }
-                }
-            }
-
-        } catch (error) {
-            batchErrors.push({
-                log_id: record.log_id,
-                error: error.message,
-                stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
-            });
-            skippedCount++;
-        }
     }
+
+    async processBatch(batch) {
+      let processedCount = 0;
+      let skippedCount = 0;
+      const batchErrors = [];
+      const batchWarnings = [];
+
+      for (const record of batch) {
+          try {
+              if (!record.table || !record.rsbsa_no) {
+                  batchWarnings.push({
+                      log_id: record.log_id,
+                      message: 'Skipped due to missing table or RSBSA number'
+                  });
+                  skippedCount++;
+                  continue;
+              }
+
+              const sourceData = await this.getSourceData(record.table, record.rsbsa_no);
+
+              if (!sourceData || sourceData.length === 0) {
+                  batchWarnings.push({
+                      log_id: record.log_id,
+                      message: `No source data for RSBSA ${record.rsbsa_no} in ${record.table}`
+                  });
+                  skippedCount++;
+                  continue;
+              }
+
+              await this.transferData(record.table, sourceData);
+              processedCount += sourceData.length;
+
+              if (record.table === 'farmparcelownership') {
+                  const parcelIds = sourceData.map(item => item.parcel_id);
+                  if (parcelIds.length > 0) {
+                      const [parcelData] = await this.sourcePool.query(
+                          `SELECT * FROM farmparcel WHERE parcel_id IN (?)`,
+                          [parcelIds]
+                      );
+
+                      if (parcelData.length > 0) {
+                          await this.transferData('farmparcel', parcelData);
+                          processedCount += parcelData.length;
+                      }
+                  }
+              }
+
+          } catch (error) {
+              batchErrors.push({
+                  log_id: record.log_id,
+                  error: error.message,
+                  stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+              });
+              skippedCount++;
+          }
+      }
 
       if (batchErrors.length > 0) {
           logger.error(`Batch completed with ${batchErrors.length} errors`, {
@@ -642,17 +643,18 @@ class EtlService {
           errors: batchErrors,
           warnings: batchWarnings
       };
-  }
+    }
 
     async runEtlProcess() {
         try {
+            this.lastRun = new Date();
             const batchSize = 500;
             let offset = 0;
             let totalProcessed = 0;
             let totalSkipped = 0;
 
             const totalRecords = await this.etlLogger.getTotalRecords();
-            logger.log(`Starting ETL process. Total records: ${totalRecords}`);
+            logger.log(`Starting RSBSA ETL. Total records: ${totalRecords}`);
 
             while (offset < totalRecords) {
                 logger.log(`Processing batch: ${offset} to ${offset + batchSize - 1}`);
@@ -669,12 +671,52 @@ class EtlService {
                 await new Promise(resolve => setTimeout(resolve, 1000));
             }
 
-            logger.log(`ETL process completed. Total Processed: ${totalProcessed}, Total Skipped: ${totalSkipped}`);
+            logger.log(`RSBSA ETL completed. Total Processed: ${totalProcessed}, Total Skipped: ${totalSkipped}`);
             return { processed: totalProcessed, skipped: totalSkipped };
         } catch (error) {
-            logger.error(`ETL process failed: ${error.message}`);
+            logger.error(`RSBSA ETL failed: ${error.message}`);
             throw error;
         }
+    }
+
+    getPHTTimestamp() {
+      const now = new Date();
+      const options = {
+          timeZone: 'Asia/Manila',
+          hour12: false,
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit',
+          hour: '2-digit',
+          minute: '2-digit',
+          second: '2-digit',
+      };
+      const parts = new Intl.DateTimeFormat('en-CA', options).formatToParts(now);
+      const dateParts = {};
+      parts.forEach(({ type, value }) => {
+          dateParts[type] = value;
+      });
+      const { year, month, day, hour, minute, second } = dateParts;
+      const ms = now.getMilliseconds().toString().padStart(3, '0');
+      return `${year}-${month}-${day}T${hour}:${minute}:${second}.${ms}+08:00`;
+    }
+
+    async stopEtlProcess() {
+      const stopTime = this.getPHTTimestamp();
+      logger.log(`RSBSA ETL scheduler stopped at ${stopTime}`);
+
+      if (this.lastRun) {
+        const lastRunTime = new Date(this.lastRun);
+        const formattedLastRun = lastRunTime.toLocaleString();
+        logger.log(`Last ETL run was at: ${formattedLastRun}`);
+        console.log(`Last ETL run was at: ${formattedLastRun}`);
+      }
+
+      return {
+        message: 'ETL scheduler stopped successfully',
+        stopTime: stopTime,
+        lastRun: this.lastRun
+      };
     }
 }
 
