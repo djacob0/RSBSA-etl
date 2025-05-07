@@ -6,7 +6,6 @@ const projectRoot = path.resolve(__dirname, '../');
 const LOG_DIRECTORY = path.join(projectRoot, 'logs');
 const LOG_FILE = path.join(LOG_DIRECTORY, 'RSBSAetl.log');
 
-// Ensure log directory and file exist
 try {
   if (!fs.existsSync(LOG_DIRECTORY)) {
     fs.mkdirSync(LOG_DIRECTORY, { recursive: true });
@@ -20,7 +19,6 @@ try {
   console.error(`Error stack: ${error.stack}`);
 }
 
-// Helper to format date in PHT ISO-like format
 function getPHTTimestamp() {
   const now = new Date();
   const options = {
