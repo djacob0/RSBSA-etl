@@ -573,111 +573,135 @@ class EtlService {
       const batchWarnings = [];
 
       for (const record of batch) {
-          try {
-              if (!record.table || !record.rsbsa_no) {
-                  batchWarnings.push({
-                      log_id: record.log_id,
-                      message: 'Skipped due to missing table or RSBSA number'
-                  });
-                  skippedCount++;
-                  continue;
-              }
-
-              const sourceData = await this.getSourceData(record.table, record.rsbsa_no);
-
-              if (!sourceData || sourceData.length === 0) {
-                  batchWarnings.push({
-                      log_id: record.log_id,
-                      message: `No source data for RSBSA ${record.rsbsa_no} in ${record.table}`
-                  });
-                  skippedCount++;
-                  continue;
-              }
-
-              await this.transferData(record.table, sourceData);
-              processedCount += sourceData.length;
-
-              if (record.table === 'farmparcelownership') {
-                  const parcelIds = sourceData.map(item => item.parcel_id);
-                  if (parcelIds.length > 0) {
-                      const [parcelData] = await this.sourcePool.query(
-                          `SELECT * FROM farmparcel WHERE parcel_id IN (?)`,
-                          [parcelIds]
-                      );
-
-                      if (parcelData.length > 0) {
-                          await this.transferData('farmparcel', parcelData);
-                          processedCount += parcelData.length;
-                      }
-                  }
-              }
-
-          } catch (error) {
-              batchErrors.push({
-                  log_id: record.log_id,
-                  error: error.message,
-                  stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
-              });
-              skippedCount++;
+        try {
+          if (!record.table || !record.rsbsa_no) {
+            batchWarnings.push({
+              log_id: record.log_id,
+              message: 'Skipped due to missing table or RSBSA number'
+            });
+            skippedCount++;
+            continue;
           }
+
+          const sourceData = await this.getSourceData(record.table, record.rsbsa_no);
+
+          if (!sourceData || sourceData.length === 0) {
+            batchWarnings.push({
+              log_id: record.log_id,
+              message: `No source data for RSBSA ${record.rsbsa_no} in ${record.table}`
+            });
+            skippedCount++;
+            continue;
+          }
+
+          await this.transferData(record.table, sourceData);
+          processedCount += sourceData.length;
+
+          if (record.table === 'farmparcelownership') {
+            const parcelIds = sourceData.map(item => item.parcel_id);
+            if (parcelIds.length > 0) {
+              const [parcelData] = await this.sourcePool.query(
+                `SELECT * FROM farmparcel WHERE parcel_id IN (?)`,
+                [parcelIds]
+              );
+
+              if (parcelData.length > 0) {
+                await this.transferData('farmparcel', parcelData);
+                processedCount += parcelData.length;
+              }
+            }
+          }
+
+        } catch (error) {
+          const errorDetails = {
+            log_id: record.log_id,
+            rsbsa_no: record.rsbsa_no,
+            error: error.message,
+            stack: process.env.NODE_ENV === 'development' ? error.stack : undefined,
+            timestamp: new Date().toISOString()
+          };
+          batchErrors.push(errorDetails);
+          skippedCount++;
+          logger.error(`Failed to process record ${record.log_id}`, {
+            rsbsa_no: record.rsbsa_no,
+            error: error.message,
+            stack: process.env.NODE_ENV === 'development' ? error.stack : undefined,
+            details: error
+          });
+        }
       }
 
       if (batchErrors.length > 0) {
-          logger.error(`Batch completed with ${batchErrors.length} errors`, {
-              sampleErrors: batchErrors.slice(0, 5),
-              errorRate: `${((batchErrors.length / batch.length) * 100).toFixed(2)}%`
-          });
-          console.log(`Batch completed with ${batchErrors.length} errors: ${JSON.stringify(batchErrors.slice(0, 5))}`);
+        logger.error(`Batch completed with ${batchErrors.length} errors`, {
+          sampleErrors: batchErrors.slice(0, 5),
+          errorRate: `${((batchErrors.length / batch.length) * 100).toFixed(2)}%`
+        });
+        console.log(`Batch completed with ${batchErrors.length} errors: ${JSON.stringify(batchErrors.slice(0, 5))}`);
       }
 
       if (batchWarnings.length > 0) {
-          logger.log(`Batch had ${batchWarnings.length} warnings`, {
-              sampleWarnings: batchWarnings.slice(0, 5)
-          });
-          console.log(`Batch had ${batchWarnings.length} warnings: ${JSON.stringify(batchWarnings.slice(0, 5))}`);
+        logger.log(`Batch had ${batchWarnings.length} warnings`, {
+          sampleWarnings: batchWarnings.slice(0, 5)
+        });
+        console.log(`Batch had ${batchWarnings.length} warnings: ${JSON.stringify(batchWarnings.slice(0, 5))}`);
       }
 
       return {
-          processedCount,
-          skippedCount,
-          errors: batchErrors,
-          warnings: batchWarnings
+        processedCount,
+        skippedCount,
+        errors: batchErrors,
+        warnings: batchWarnings
       };
     }
 
     async runEtlProcess() {
-        try {
-            this.lastRun = new Date();
-            const batchSize = 500;
-            let offset = 0;
-            let totalProcessed = 0;
-            let totalSkipped = 0;
+      try {
+          this.lastRun = new Date();
+          const batchSize = 10000;
+          let offset = 0;
+          let totalProcessed = 0;
+          let totalSkipped = 0;
+          let lastLoggedProgress = -1;
 
-            const totalRecords = await this.etlLogger.getTotalRecords();
-            logger.log(`Starting RSBSA ETL. Total records: ${totalRecords}`);
+          const totalRecords = await this.etlLogger.getTotalRecords();
+          logger.log(`Starting RSBSA ETL. Total records: ${totalRecords}`);
 
-            while (offset < totalRecords) {
-                logger.log(`Processing batch: ${offset} to ${offset + batchSize - 1}`);
+          while (offset < totalRecords) {
+              const currentOffset = offset;
+              logger.log(`Processing batch: ${currentOffset} to ${Math.min(currentOffset + batchSize - 1, totalRecords - 1)}`);
 
-                const batch = await this.etlLogger.getRecordsBatch(offset, batchSize);
-                if (batch.length === 0) break;
+              const batch = await this.etlLogger.getRecordsBatch(currentOffset, batchSize);
+              if (batch.length === 0) break;
 
-                const { processedCount, skippedCount } = await this.processBatch(batch);
+              const result = await this.processBatch(batch);
+              totalProcessed += result.processedCount;
+              totalSkipped += result.skippedCount;
+              offset += batchSize;
 
-                totalProcessed += processedCount;
-                totalSkipped += skippedCount;
-                offset += batchSize;
+              const currentProgress = Math.min(Math.round((offset / totalRecords) * 100), 100);
+              if (currentProgress > lastLoggedProgress) {
+                  logger.log(`Progress: ${currentProgress}% (${Math.min(offset, totalRecords)}/${totalRecords})`);
+                  lastLoggedProgress = currentProgress;
+              }
 
-                await new Promise(resolve => setTimeout(resolve, 1000));
-            }
+              await new Promise(resolve => setTimeout(resolve, 1000));
+          }
 
-            logger.log(`RSBSA ETL completed. Total Processed: ${totalProcessed}, Total Skipped: ${totalSkipped}`);
-            return { processed: totalProcessed, skipped: totalSkipped };
-        } catch (error) {
-            logger.error(`RSBSA ETL failed: ${error.message}`);
-            throw error;
-        }
-    }
+          logger.log(`RSBSA ETL completed. Total Processed: ${totalProcessed}, Total Skipped: ${totalSkipped}`);
+          return {
+              processed: totalProcessed,
+              skipped: totalSkipped,
+              startTime: this.lastRun,
+              endTime: new Date()
+          };
+      } catch (error) {
+          logger.error('RSBSA ETL process failed', {
+              error: error.message,
+              stack: error.stack
+          });
+          throw error;
+      }
+  }
 
     getPHTTimestamp() {
       const now = new Date();

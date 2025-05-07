@@ -75,9 +75,7 @@ app.post('/api/start-etl', async (req, res) => {
     etlTask = cron.schedule(cronSchedule, async () => {
       try {
         lastRunTime = new Date();
-        logger.log('Running scheduled RSBSA ETL...');
         await etlService.runEtlProcess();
-        logger.log('Scheduled ETL process completed');
       } catch (error) {
         logger.error(`Scheduled ETL run failed: ${error.message}`);
       }
@@ -313,7 +311,7 @@ app.use((err, req, res, next) => {
 });
 
 const server = app.listen(port, () => {
-  logger.log(`ETL Control API running on port ${port}`);
+  logger.log(`RSBSA ETL Control API running on port ${port}`);
 });
 
 server.on('error', (error) => {
