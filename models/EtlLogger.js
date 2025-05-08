@@ -3,7 +3,7 @@ class EtlLogger {
     this.pool = pool;
   }
 
-  async getRecordsBatch(offset = 0, limit = 10000) {
+  async getRecordsBatch(offset = 0, limit = 50000) {
     const [rows] = await this.pool.query(
       `SELECT log_id, rsbsa_no, \`table\`
         FROM etl_logger_profiling
